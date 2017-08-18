@@ -1,0 +1,429 @@
+/*
+// ABCDE&F TO MOVE TO KNOB POSITION ( GRIPPER KEPT OPEN, AND ANGLE RESET TO 0)
+// + & - TO ROTATE 30DEG ANTICLOCKWISE & CLOCKWISE  ( AFTER ROTATION GRIPPER KEPT OPEN)
+//
+// DOBOT TO ARDUINO MEGA, 3 WIRE CONNECTION, DOBOT Rx, Tx, GND ->> MEGA Tx2(PIN16), Rx2(PIN17), GND. ** 5V NO NEED TO CONNECT.  
+// HYPER TERMINAL TO ARDUINO MEGA, 4 WIRE CONNECTION, RS232 Rx, Tx, GND, 5V ->> MEGA Rx1(PIN19), Tx1(PIN18), GND, 5V. ** Rx to Rx1 & Tx to Tx1. 
+// PC TO ARDUINO MEGA, USB CONNECTION, FOR SERIAL MONITOR AND 5V SUPPLY FOR MEGA, SERIAL MONITOR -->>  MEGA Rx0(PIN), Tx0(PIN), GND, 5V.
+//
+// PARAMS 0:0000, 1:3F80, 2:4000, 3:4040, 4:4080, 5:40A0, 6:40C0, 7:40E0, 8:4020, 9:4110, 10:4120, 12:4140, 15:4170, 18:4190, 20:41A0,
+// PARAMS 10:4120, 20:41A0, 25:41C8, 30:41F0, 40:4220, 45:4234, 50:4248, 60:4270, 70:428C, 75:4296, 80:42A0, 90:42B4, 100:42C8, 
+// PARAMS 120:42F0, 150:4316, 180:4334, 200:4348, 210:4352, 225:4361, 230:4366, 240:4370, 250:437A, 270:4387, 300:4396,
+// X Axis limits 70mm to 250mm, Y Axis Limits -250mm to +250mm at z - 0mm.
+*/
+
+// For Setup *************************************************
+byte DOBOTCommandDATA [23];
+int DOBOTCommandLength = 0;
+int DOBOT_BUFFER_AVAILABLE = 0;
+int Serial2Acknowedgement = 0;
+
+// Set Dobot coordinates X, Y, Z, R; Paramas Length = 16 Bytes(4x4).
+// byte SetHOMEParams30_00 [] = {0xAA,0xAA,0x12,0x1E,0x03,0X00,0X00,0X48,0X43,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x54}; //TO SET HAME pos @  200,0,0,0
+byte SetHOMEParams30_00 [] = {0xAA,0xAA,0x12,0x1E,0x03,0X00,0X00,0X66,0X43,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x36};    //TO SET HAME pos @  230,0,0,0
+byte GetHOMEPramas30 [] = {0xAA,0xAA,0x02,0x1E,0x00,0xE2}; // Get Dobot coordinates X, Y, Z, R; Paramas Length = 0 Bytes(4x4).
+byte SetHOMECmd31[] = {0xAA,0xAA,0x02,0x1F,0x03,0xDE}; // Paramas Length = 2+1 Bytes
+
+byte SetPTPJumpParams82 [] = {0xAA,0xAA,0x0A,0x52,0x03,0X00,0X00,0X48,0X42,0x00,0x00,0xC8,0x42,0x17}; // in JUMP mode rising distance =50mm, rising Limit = 100mm
+byte GetPTPJumpParams82 [] = {0xAA,0xAA,0x02,0x52,0x00,0xAE}; 
+
+// Set PTPJointParams // PTP mode (Value range 0~8, & x,y,z,r is the parameter of ptpMode. Paramas Length = 17 Bytes(1 + 4x4).
+byte SetPTPJointParams84_00 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00}; // Jump-XYZR, 230,0,0,0
+
+byte SetPTPJointParams84_AR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X43,0XC3,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X71}; // Jump-XYZR, 230,-195,-25,0
+byte SetPTPJointParams84_BR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X04,0XC3,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0XB0}; // Jump-XYZR, 230,-132,-25,0
+byte SetPTPJointParams84_CR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X84,0XC2,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X31}; // Jump-XYZR, 230,-066,-25,0
+byte SetPTPJointParams84_DR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X00,0X00,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X77}; // Jump-XYZR, 230, 000,-25,0
+byte SetPTPJointParams84_ER0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X84,0X42,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0XB1}; // Jump-XYZR, 230, 066,-25,0
+byte SetPTPJointParams84_FR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X66,0X43,0X00,0X00,0X04,0X43,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X30}; // Jump-XYZR, 230, 132,-25,0
+/*
+byte SetPTPJointParams84_AR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X43,0XC3,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X8F}; // Jump-XYZR, 200,-195,-25,0
+byte SetPTPJointParams84_BR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X04,0XC3,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0XCE}; // Jump-XYZR, 200,-132,-25,0
+byte SetPTPJointParams84_CR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X84,0XC2,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X4F}; // Jump-XYZR, 200,-066,-25,0
+byte SetPTPJointParams84_DR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X00,0X00,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X95}; // Jump-XYZR, 200, 000,-25,0
+byte SetPTPJointParams84_ER0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X84,0X42,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0XCF}; // Jump-XYZR, 200, 066,-25,0
+byte SetPTPJointParams84_FR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X04,0X43,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X4E}; // Jump-XYZR, 200, 132,-25,0
+
+byte SetPTPJointParams84_BR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X02,0XC3,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0XD0}; // Jump, 200,-130,-25,0
+byte SetPTPJointParams84_CR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X82,0XC2,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X51}; // Jump, 200,-065,-25,0
+byte SetPTPJointParams84_DR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X00,0X00,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X95}; // Jump, 200, 000,-25,0
+byte SetPTPJointParams84_ER0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X82,0X42,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0XD1}; // Jump, 200, 065,-25,0
+byte SetPTPJointParams84_FR0 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X02,0X43,0X00,0X00,0XC8,0XC1,0X00,0X00,0X00,0X00,0X50}; // Jump, 200, 130,-25,0
+
+byte SetPTPJointParams84_Ra30 [] = {0xAA,0XAA,0X13,0X54,0X03,0X06,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0XF0,0X41,0X72}; // increase, +0,+0,+0,+30
+byte SetPTPJointParams84_Rc30 [] = {0xAA,0XAA,0X13,0X54,0X03,0X06,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0XF0,0XC1,0XF2}; // increase, +0,+0,+0,-30
+*/
+byte SetPTPJointParams84_Ra30 [] = {0xAA,0XAA,0X13,0X54,0X03,0X08,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X20,0X42,0X3F}; // increase, +0,+0,+0,+40
+byte SetPTPJointParams84_Rc30 [] = {0xAA,0XAA,0X13,0X54,0X03,0X08,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X20,0XC2,0XBF}; // increase, +0,+0,+0,-40
+
+byte SetPTPJointParams84_02 [] = {0xAA,0XAA,0X13,0X54,0X03,0X00,0X00,0X00,0X48,0X43,0X00,0X00,0X16,0X43,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0X00,0XC5}; // Jump, 200,150,0,0
+
+byte GetPose[] = {0xAA,0xAA,0x02,0x0A,0x00,0xF6}; 
+byte ResetPose[] = {0xAA,0xAA,0x0B,0x0B,0x02,0x01,0x00,0x30,0x00,0x30,0X92};
+
+// Set Velocity and Accelaration for 4 axis. Paramas Length = 32 Bytes(2 x 4x4).
+byte SetJOGJointParams70 [] = {0xAA,0XAA,0X22,0X46,0X03,0X00,0X00,0XC8,0X42,0X00,0X00,0XC8,0X42,0X00,0X00,0XC8,0X42,0X00,0X00,0XC8,0X42,0X00,0X00,0XA0,0X42,0X00,0X00,0XA0,0X42,0X00,0X00,0XA0,0X42,0X00,0X00,0XA0,0X42,0X67};
+// Get Velocity and Accelaration for 4 axis. Paramas Length = 0 Bytes.
+byte GetJOGJointParams70 [] = {0xAA,0XAA,0X02,0X46,0X00,0XBA};
+// Set Coornite velocity and Coordinate acceleration of 4 axis. Paramas Length = 32 Bytes(2 x 4x4). 
+byte SetJOGCoordinateParams71 [] = {0xAA,0XAA,0X22,0X47,0X03,0X00,0X00,0XC8,0X42,0X00,0X00,0XC8,0X42,0X00,0X00,0XC8,0X42,0X00,0X00,0XC8,0X42,0X00,0X00,0XA0,0X42,0X00,0X00,0XA0,0X42,0X00,0X00,0XA0,0X42,0X00,0X00,0XA0,0X42,0X66};
+// Get Coornite velocity and Coordinate acceleration of 4 axis. . Paramas Length = 0 Bytes.
+byte GetJOGCoordinateParams71 [] = {0xAA,0XAA,0X02,0X47,0X00,0XB9};
+// Set Velocity ratio and Acceleration ratio,share joint jog and coordinated jog. . Paramas Length = 8 Bytes (2x4).
+byte SetJOGCommonParams72 [] = {0xAA,0XAA,0X0A,0X48,0X03,0X00,0X00,0X48,0X42,0X00,0X00,0X48,0X42,0XA1};
+// Get Velocity ratio and Acceleration ratio,share joint jog and coordinated jog. Paramas Length = 0 Bytes.
+byte GetJOGCommonParams72 [] = {0xAA,0XAA,0X02,0X48,0X00,0XB8};
+
+
+byte SetEndEffectorGripper63_E [] = {0xAA,0XAA,0X04,0X3F,0X03,0x01,0x00,0xBD};
+byte SetEndEffectorGripper63_D [] = {0xAA,0XAA,0X04,0X3F,0X03,0x00,0x00,0xBE};
+byte SetEndEffectorGripper63_G [] = {0xAA,0XAA,0X04,0X3F,0X03,0x01,0x01,0xBC};
+byte SetEndEffectorGripper63_R [] = {0xAA,0XAA,0X04,0X3F,0X03,0x01,0x00,0xBD};
+byte GetEndEffectorGripper63 [] = {0xAA,0XAA,0X02,0X3F,0X03,0XBE}; // 0xAA 0xAA 0x0A 0x3F 0x03 0x45 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x78 
+
+// Set GP4 as Servo Gripper (EIO Address = 0x06, EIO Function = PWM (0x02))
+byte SetIOMultiplexing130 [] = {0xAA,0XAA,0X04,0X82,0X03,0x06,0x02,0x73}; 
+
+// GP4 as Servo Gripper, to Grip (close) (EIO Adddressing= 06, PWM frequency = 50Hz FOR 20ms ( 10Hz to 1MHz), PWM Duty Ratio = MIN 4.5 TO MAX 10.5(0.9ms - 1.2ms)
+byte SetIOPWM132_GP4_G5 [] = {0xAA,0XAA,0X0B,0X84,0X03,0x06,0X00,0X00,0X48,0X42,0X00,0X00,0XA0,0X40,0x09}; // ADDRESS 06, PWM FREQUENCY=50 (20ms), DUTYRATIO: 5 (1ms)0DEG
+byte SetIOPWM132_GP4_G6 [] = {0xAA,0XAA,0X0B,0X84,0X03,0x06,0X00,0X00,0X48,0X42,0X00,0X00,0XC0,0X40,0xE9}; // ADDRESS 06, PWM FREQUENCY=50 (20ms), DUTYRATIO: 6 (1ms)0DEG
+byte SetIOPWM132_GP4_G7 [] = {0xAA,0XAA,0X0B,0X84,0X03,0x06,0X00,0X00,0X48,0X42,0X00,0X00,0XE0,0X40,0xC9}; // ADDRESS 06, PWM FREQUENCY=50 (20ms), DUTYRATIO: 7 (1ms)0DEG
+byte SetIOPWM132_GP4_G75 [] = {0xAA,0XAA,0X0B,0X84,0X03,0x06,0X00,0X00,0X48,0X42,0X00,0X00,0XF0,0X40,0xB9}; // ADDRESS 06, PWM FREQUENCY=50 (20ms), DUTYRATIO: 7.5 (1ms)0DEG
+byte SetIOPWM132_GP4_G8 [] = {0xAA,0XAA,0X0B,0X84,0X03,0x06,0X00,0X00,0X48,0X42,0X00,0X00,0X00,0X41,0xA8}; // ADDRESS 06, PWM FREQUENCY=50 (20ms), DUTYRATIO: 8 (1ms)0DEG
+
+// GP4 as Servo Gripper, to Release (Open) (EIO Adddressing= 06, PWM frequency = 50Hz FOR 20ms ( 10Hz to 1MHz), PWM Duty Ratio = MIN 4.5 TO MAX 10.5(0.9ms - 1.2ms) 
+byte SetIOPWM132_GP4_R [] = {0xAA,0XAA,0X0B,0X84,0X03,0x06,0X00,0X00,0X48,0X42,0X00,0X00,0X20,0X41,0x88}; // ADDRESS 06, PWM FREQUENCY=50 (20ms), DUTYRATIO: 10 (2ms)120DEG
+
+//************************* SETUP **************************
+void setup() {
+InitialiseSerialComs();
+
+//EnableEndEffectorGripper();
+//EndEffectorReleased();        // Close the Released
+//DisableEndEffectorGripper();  // Disable EndEffector as Gripper
+//ReadSerial2();              // Read DOBOT Feedback (serial2)
+
+SetGP4asPWMoutput();          // GP4 as PWM output
+//ServoEndEffectorGripped();  //EndEffectorGripped();       // Close the Gripper
+ServoEndEffectorReleased(); //EndEffectorReleased();      // Close the Released 
+
+SetPTPJumpParams ();          // set Jump Height and Z Limit.
+GetPTPJumpParams();           // Get Jump Height and Z Limit.
+ReadSerial2();              // Read DOBOT Feedback (serial2)
+
+SetHOMEParameters();          // Set Home Parameters.
+GetHOMEParameters();          // Get Home Parameters.
+ReadSerial2();                // Read DOBOT Feedback (serial2)
+
+MoveToIntPosition();          // Move to Initial Position.
+ReadSerial2();
+SetToHomePosition();          // Set to Home Position.
+ReadSerial2();
+ServoEndEffectorReleased(); //EndEffectorReleased();      // OPEN the GRIPPER 
+Serial.println("Setup Completed");
+
+}  
+
+
+//**************** LOOP ******************************
+void loop() {
+//***************** IF SERIAL1 AVAILABLE READ & DECODE COMMOND **********************
+
+ if (Serial1.available()) {
+    char MetCalCommand[38];
+    for (int i = 0; i < sizeof(MetCalCommand); i++) { // RESERVE SPACE FOR METCAL COMMOND 
+      MetCalCommand[i] = ' ';
+    }
+    int cnt = 0;
+    while (Serial1.available()) {
+      char temp = Serial1.read();
+      MetCalCommand[cnt] = temp;
+//        Serial.print("MetCalCommand: ");
+//        Serial.write(MetCalCommand[cnt]);
+//        Serial.print("(0x");
+//        Serial.print(MetCalCommand[cnt], DEC);
+//        Serial.print(") & Action:");
+ 
+  switch (MetCalCommand[cnt]) {
+  case 65: // "A"
+        JumpToPoint_AR0();        // Jump to Point A, End Effector Rotation = 0
+    break;
+  case 66: // "B"
+        JumpToPoint_BR0();        // Jump to Point B, End Effector Rotation = 0
+    break;
+  case 67: // "C"
+        JumpToPoint_CR0();        // Jump to Point C, End Effector Rotation = 0
+    break;
+  case 68: // "D"
+        JumpToPoint_DR0();        // Jump to Point D, End Effector Rotation = 0
+    break;
+  case 69: // "E"
+        JumpToPoint_ER0();        // Jump to Point E, End Effector Rotation = 0
+    break;
+  case 70: // "F"
+        JumpToPoint_FR0();        // Jump to Point F, End Effector Rotation = 0
+    break;
+  case 43: // "-" (Grip and Rotate) 82: //R
+        ServoEndEffectorGripped();  //EndEffectorGripped();       // Close the Gripper
+        RotateEndEffector30();      // Rotate Clockwise 30deg
+        ServoEndEffectorReleased(); //EndEffectorReleased();      // Close the Released     
+    break;
+  case 45: // "+" (Grip and Rotate) 78: //N
+        ServoEndEffectorGripped(); //EndEffectorGripped();               // Close the Gripper
+        ReverseRotateEndEffector30();       // Rotate AntiClockwise 30deg
+        ServoEndEffectorReleased(); //EndEffectorReleased();              // Close the Released
+    break;
+  case 60: // "<" Only Close the Gripper
+        ServoEndEffectorGripped();  //EndEffectorGripped();       // Close the Gripper 
+    break;
+  case 62: // ">"   Only Open the Gripper
+        ServoEndEffectorReleased(); //EndEffectorReleased();      // Close the Released  
+    break;
+  default: 
+        Serial1.println("NOT A VALID COMMAND");
+        Serial1.println(" A, B, C, D, E, F = MOVE TO RELATED POSITION");
+        Serial1.println(" + & <  ROTATE CLOCKWISE 30Deg, - & > ROTATE CLOCKWISE 30Deg");
+  break;
+  }
+
+      cnt++;
+      delayMicroseconds(10);
+     ServoEndEffectorReleased(); //EndEffectorReleased();      // Close the Released 
+} 
+}     
+}
+//XXXXXXXXXXXXXXX END OF LOOP   XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+//************* Initialize Serial ******************************************
+void InitialiseSerialComs(){
+Serial.begin(115200); // can work only at 115200 Rate - to ARDUINO Monitor
+Serial1.begin(9600); // MET/CAL MAX SPEED IS 9600 - to MET/CAL PC THROUGH RS232
+Serial2.begin(115200); // at 115200 Rate - to DOBOT
+Serial.println("Serial0 Start");
+}
+
+//************** Move to Initial Position **************************
+void MoveToIntPosition(){ 
+Serial.print(Serial2.availableForWrite()); // Get the number of bytes (characters) available for writing in the serial buffer without blocking the write operation.
+Serial.print(" & ");
+Serial.print (Serial2.write(SetPTPJointParams84_00, 23)); // will display No of Bytes transfered.
+Serial2.flush();
+delay(100);
+Serial.println(" DOBOT@ X=230, Y=0, Z=0, R=0, G=Open "); 
+}
+
+//******************* Set Home Parameters **************************************
+void SetHOMEParameters(){ 
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetHOMEParams30_00, 22));
+Serial2.flush();
+Serial.println(" HomePramas Set to X=230, Y=0, Z=0, R=0, G=Open ");
+}
+
+//*************** Get Home Parameters ***************************************************************
+void GetHOMEParameters(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(GetHOMEPramas30, 6));
+Serial2.flush();
+Serial.println(" GetHomePramas = ");
+}
+
+//*************** Read from Serial2 ***************************************************************
+void ReadSerial2() {
+//Serial.println("Return from DOBOT");
+while (Serial2.available() > 0) {
+// get the new byte:
+byte inByte = (byte)Serial2.read();
+char tmp[4];
+sprintf(tmp, "0x%.2X",inByte);
+Serial.print(tmp); 
+Serial.print(",");
+//Serial.print(inByte, HEX);
+}
+Serial.println(" ");
+}
+
+//***************  EndEffector as Gripper Enable ***************************************************************
+void EnableEndEffectorGripper(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetEndEffectorGripper63_E, 8));
+Serial2.flush();
+delay(100);
+Serial.println(" Gripper Enabled ");
+}
+
+//***************  EndEffector as Gripper Disable ***************************************************************
+void DisableEndEffectorGripper(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetEndEffectorGripper63_D, 8));
+Serial2.flush();
+//delay(10);
+Serial.println(" Gripper Disabled ");
+}
+
+//*************** EndEffector Gripper Gripped***************************************************************
+void EndEffectorGripped(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetEndEffectorGripper63_G, 8));
+Serial2.flush();
+delay(4000);
+Serial.println(" Gripper Gripped ");
+}
+
+//*************** Disable EndEffector as Gripper ***************************************************************
+void EndEffectorReleased(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetEndEffectorGripper63_R, 8));
+Serial2.flush();
+delay(4000);
+Serial.println(" Gripper Released ");
+}
+
+//*************** set GP4 as PWM for Servo EndEffector Gripper ***************************************************************
+void SetGP4asPWMoutput(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetIOMultiplexing130, 8));
+Serial2.flush();
+delay(3000);
+Serial.println(" GP4 Set to PWM output ");
+}
+
+//*************** Servo EndEffector Gripper Gripped***************************************************************
+void ServoEndEffectorGripped(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetIOPWM132_GP4_G6, 15));
+Serial2.flush();
+delay(6000);
+Serial.println(" Close ");
+}
+
+//*************** Servo EndEffector Released ***************************************************************
+void ServoEndEffectorReleased(){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetIOPWM132_GP4_R, 15));
+Serial2.flush();
+delay(5000);
+Serial.println(" Open ");
+}
+
+//*************** Set to Home Position ***************************************************************
+void SetToHomePosition(){      
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetHOMECmd31, 10));
+Serial2.flush();
+delay(20000);
+Serial.println(" DOBOT@ HOME Position ");
+}
+
+//*************** Jump To Point A, End Effector Rotation = 00 ***************************************************************
+void JumpToPoint_AR0(){  
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_AR0, 23));
+Serial2.flush();
+//delay(100);
+Serial.println(" DOBOT@ A R=0 ");
+}
+
+//*************** Jump To Point B, End Effector Rotation = 00 ***************************************************************
+void JumpToPoint_BR0(){  
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_BR0, 23));
+Serial2.flush();
+//delay(100);
+Serial.println(" DOBOT@ B R=0 ");
+}
+
+//*************** Jump To Point A, End Effector Rotation = 00 ***************************************************************
+void JumpToPoint_CR0(){  
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_CR0, 23));
+Serial2.flush();
+//delay(100);
+Serial.println(" DOBOT@ C R=0 ");
+}
+
+//*************** Jump To Point B, End Effector Rotation = 00 ***************************************************************
+void JumpToPoint_DR0(){  
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_DR0, 23));
+Serial2.flush();
+//delay(100);
+Serial.println(" DOBOT@ D R=0 ");
+}
+
+//*************** Jump To Point A, End Effector Rotation = 00 ***************************************************************
+void JumpToPoint_ER0(){  
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_ER0, 23));
+Serial2.flush();
+//delay(100);
+Serial.println(" DOBOT@ E R=0 ");
+}
+
+//*************** Jump To Point B, End Effector Rotation = 00 ***************************************************************
+void JumpToPoint_FR0(){  
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_FR0, 23));
+Serial2.flush();
+//delay(100);
+Serial.println(" DOBOT@ F R=0 ");
+}
+
+//*************** AT the same Point End Effector Rotation = 30 deg ***************************************************************
+void RotateEndEffector30(){    
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_Ra30, 23));
+Serial2.flush();
+delay(2000);
+Serial.println(" Rotate 30deg ");
+}
+
+//*************** AT the same Point End Effector Rotation = -30 deg ***************************************************************
+void ReverseRotateEndEffector30(){    
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJointParams84_Rc30, 23));
+Serial2.flush();
+delay(2000);
+Serial.println(" Rotate -30deg ");
+} 
+
+//*************** Set Jump Height = 50mm, Z Limit = 100mm ***************************************************************
+void SetPTPJumpParams (){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(SetPTPJumpParams82, 10));
+Serial2.flush();
+//delay(10);
+Serial.println(" Set Jump Height = 50mm, Z Limit = 100mm ");
+}
+
+//*************** Get Jump Height &, Z Limit ***************************************************************
+void GetPTPJumpParams (){
+Serial.print(Serial2.availableForWrite());
+Serial.print(" & ");
+Serial.print(Serial2.write(GetPTPJumpParams82, 2));
+Serial2.flush();
+//delay(10);
+Serial.println(" Jump Height & Z Limit = ");
+}
+
+   
